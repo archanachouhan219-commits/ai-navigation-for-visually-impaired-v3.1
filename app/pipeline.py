@@ -8,6 +8,7 @@ import cv2
 from camera_input.camera import CameraStream
 from navigation.navigation_engine import NavigationEngine
 from navigation.target_guidance import TargetGuidance
+from navigation.hazard_tracker import HazardTracker
 from perception.depth_estimator import DepthEstimator, create_depth_estimator
 from perception.depth_worker import DepthWorker
 from perception.detector import YOLODetector
@@ -15,7 +16,7 @@ from perception.tracker import SimpleTracker
 from spatial.free_space import FreeSpaceAnalyzer
 from spatial.world_model import WorldModel
 from voice.command_parser import CommandParser
-from voice.text_to_speech import SpeechOutput
+from voice.text_to_speech import SpeechOutput, TTSPriority
 
 
 def run_app(cfg, camera_factory=None, detector=None, depth_estimator=None, speech=None,
@@ -81,6 +82,7 @@ def run_app(cfg, camera_factory=None, detector=None, depth_estimator=None, speec
     )
     parser = CommandParser()
     target_guidance = TargetGuidance(navigation_cfg.get("target_guidance_interval_seconds", 2.0))
+    hazard_tracker = HazardTracker()
     commands = queue.Queue()
     last_spoken = ""
     last_spoken_at = 0.0
@@ -355,23 +357,16 @@ def run_app(cfg, camera_factory=None, detector=None, depth_estimator=None, speec
                         last_response = target_message
 
                 now = time.monotonic()
-                urgent = decision["level"] in ("warning", "danger")
-                cooldown = float(
-                    navigation_cfg.get(
-                        "speech_cooldown_seconds",
-                        3.0,
+                should_announce_warning, hazard_priority, hazard_reason = hazard_tracker.evaluate(
+                    decision,
+                    now,
+                )
+
+                if not guidance_muted and should_announce_warning:
+                    speech.say(
+                        decision["text"],
+                        urgent=hazard_priority >= TTSPriority.HIGH,
                     )
-                )
-
-                should_announce_warning = (
-                    not guidance_muted
-                    and urgent
-                    and decision["text"] != last_spoken
-                    and now - last_spoken_at >= cooldown
-                )
-
-                if should_announce_warning:
-                    speech.say(decision["text"], urgent=True)
                     last_spoken = decision["text"]
                     last_spoken_at = now
 
@@ -495,3 +490,7 @@ def run_app(cfg, camera_factory=None, detector=None, depth_estimator=None, speec
 
         if display:
             cv2.destroyAllWindows()
+
+
+
+
