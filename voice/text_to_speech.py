@@ -1,5 +1,6 @@
 """Text-to-speech output engine wrapping pyttsx3 with a priority-based thread-safe worker."""
 from __future__ import annotations
+import time
 
 from dataclasses import dataclass
 from enum import IntEnum
